@@ -352,17 +352,17 @@ elif colunas == "Previsão com Machine Learning (ML)":
 
     st.subheader("🔍 Avaliação do Desempenho do Modelo")
 
-    # Acurácia
+    
     acuracia = accuracy_score(y_test, y_pred)
     st.write("**Acurácia:**",f"{acuracia * 100:.2f}%")
 
     conf_matrix = confusion_matrix(y_test, y_pred)
 
-    # Criar DataFrame com rótulos
+    
     labels = modelo.classes_ if hasattr(modelo, 'classes_') else sorted(set(y_test))
     conf_df = pd.DataFrame(conf_matrix, index=labels, columns=labels)
 
-    # Exibir no Streamlit
+    
     st.subheader("🔢 Matriz de Confusão")
     fig, ax = plt.subplots(figsize=(8, 6))
     sns.heatmap(conf_df, annot=True, fmt="d", cmap="Blues", ax=ax)
@@ -370,7 +370,7 @@ elif colunas == "Previsão com Machine Learning (ML)":
     ax.set_ylabel("Classe verdadeira")
     st.pyplot(fig)
 
-    # Classification Report
+    
     report = classification_report(y_test, y_pred, output_dict=True)
     report_df = pd.DataFrame(report).transpose()
 
