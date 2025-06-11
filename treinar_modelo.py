@@ -64,8 +64,8 @@ colunas_entrada = [
     'AGRAV ALCOOLISMO', 'AGRAV TABACO',
     'TIPO', 'RAIO-X', '1º BACILOSCOPIA', 'BACILOSCOPIA_NEGATIVA'
 ]
-X = dados_tuberculose[colunas_entrada]
-y = dados_tuberculose['STATUS ENCERRAMENTO']
+X = dados_balanceados[colunas_entrada]
+y = dados_balanceados['STATUS ENCERRAMENTO']
 
 le_dict = {}
 for col in X.columns:
