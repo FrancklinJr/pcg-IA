@@ -168,7 +168,6 @@ elif colunas == "INDÍCE DE RISCO":
     st.title("📊 Índice de Risco para Tuberculose")
     st.write("Esta tabela estima o risco com base nos fatores agravantes de cada paciente.")
 
-    # Carregamento e limpeza
     drop_cols = ["ID_UNIDADE", "CS_GESTANT", "CS_ESCOL_N", "ID_MN_RESI", "ID_RG_RESI", "HIV", "AGRAVOUTRA",
                  "CULTURA_ES",
                  "DT_NOTIFIC", "CS_RACA", "TRATAMENTO", "POP_LIBER", "TEST_SENSI", "TRATSUP_AT", "TEST_MOLEC",
@@ -189,12 +188,10 @@ elif colunas == "INDÍCE DE RISCO":
     dados = dados.drop(columns=drop_cols).rename(columns=rename_map).dropna()
     dados = dados[~dados.apply(lambda row: row.astype(str).str.contains('ignorado', case=False).any(), axis=1)]
 
-    # Baciloscopia negativa
     bac_cols = [f'{i}º BACILOSCOPIA' for i in range(1, 7)]
     dados['BACILOSCOPIA_NEGATIVA'] = dados[bac_cols].apply(lambda row: sum(row.str.contains('Negativa', case=False)),
                                                            axis=1)
 
-    # Cálculo de pontuação e risco
     pesos = {'AGRAV HIV': 5, 'AGRAV DIABETES': 2.5, 'AGRAV DROGAS': 2, 'AGRAV ALCOOLISMO': 1.5, 'AGRAV TABACO': 1}
     dados['PONTUACAO RISCO'] = dados[list(pesos)].apply(
         lambda row: sum(pesos[col] for col in pesos if row[col] == 'Sim'), axis=1)
@@ -206,7 +203,6 @@ elif colunas == "INDÍCE DE RISCO":
 
     dados['NÍVEL DE RISCO'] = dados['PONTUACAO RISCO'].apply(classificar_risco)
 
-    # Exibição
     st.dataframe(dados[["MUNICIPIO", "IDADE", "SEXO", *pesos.keys(), "PONTUACAO RISCO", "NÍVEL DE RISCO",
                         "STATUS ENCERRAMENTO"]],
                  use_container_width=True)
@@ -224,11 +220,9 @@ elif colunas == "INDÍCE DE RISCO":
 
     st.table(pd.DataFrame(corr_resultados))
 
-    # Tabela de pontuação
     st.markdown("### 🧮 **Pontos por Agravante**")
     st.table(pd.DataFrame(pesos.items(), columns=["Agravante", "Pontuação"]))
 
-    # Legenda
     st.markdown("""### 🗂️ **Legenda – Nível de Risco para Tuberculose**
     - 🟢 **Baixo Risco (0 a 3)**: Poucos ou nenhum fator agravante relevante.
     - 🟡 **Médio Risco (3.5 a 6)**: Fatores moderados. Exige atenção.
