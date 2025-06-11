@@ -87,7 +87,6 @@ print("Colunas utilizadas:", list(X.columns))
 print("Acurácia:", accuracy_score(y_test, y_pred))
 print("\nRelatório de Classificação:\n", classification_report(y_test, y_pred, target_names=y_encoder.classes_))
 
-# Salvar tudo
 joblib.dump({
     "modelo": modelo,
     "encoders": le_dict,
