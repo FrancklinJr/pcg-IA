@@ -1,97 +1,89 @@
 import pandas as pd
-from sklearn.metrics import accuracy_score, classification_report
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
-from sklearn.utils import resample
 import numpy as np
 import joblib
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report, matthews_corrcoef
+import xgboost as xgb
 
-dados_tuberculose = pd.read_csv("dados_tuberculose.csv", sep=";", low_memory=False)
-dados_tuberculose = dados_tuberculose.head(30000)
-classes_usadas = ['Cura', 'Óbito por TB', 'Abandono', 'Óbito por outras causas', 'Transferência']
-dados_tuberculose = dados_tuberculose[dados_tuberculose['SITUA_ENCE'].isin(classes_usadas)]
-dados_tuberculose = dados_tuberculose.drop(columns=[
-    "ID_UNIDADE", "CS_GESTANT", "CS_ESCOL_N", "ID_MN_RESI", "ID_RG_RESI",
-    "AGRAVOUTRA", "DT_NOTIFIC", "CS_RACA", "TEST_SENSI", "TRATSUP_AT",
-    "TEST_MOLEC", "ID_AGRAVO", "HIV", "TRATAMENTO", "POP_LIBER", "CULTURA_ES"
-])
 
-dados_tuberculose = dados_tuberculose.rename(columns={
-    "NU_ANO":"ANO",
-    "ID_MUNICIP":"MUNICIPIO",
-    "ID_REGIONA":"REGIAO",
-    "DT_DIAG":"DATA DIAGNOSTICO",
-    "NU_IDADE_N":"IDADE",
-    "CS_SEXO":"SEXO",
-    "CS_ZONA":"ZONA",
-    "AGRAVAIDS":"AGRAV HIV",
-    "AGRAVALCOO":"AGRAV ALCOOLISMO",
-    "AGRAVDIABE":"AGRAV DIABETES",
-    "AGRAVDOENC":"AGRAV DOENCA",
-    "AGRAVDROGA":"AGRAV DROGAS",
-    "AGRAVTABAC":"AGRAV TABACO",
-    "DT_INIC_TR":"INICIO DO TRATAMENTO",
-    "SITUA_ENCE":"STATUS ENCERRAMENTO",
-    "DT_ENCERRA":"DATA ENCERRAMENTO",
-    "BACILOSC_1":"1º BACILOSCOPIA",
-    "BACILOSC_2":"2º BACILOSCOPIA",
-    "BACILOSC_3":"3º BACILOSCOPIA",
-    "BACILOSC_4":"4º BACILOSCOPIA",
-    "BACILOSC_5":"5º BACILOSCOPIA",
-    "BACILOSC_6":"6º BACILOSCOPIA",
-    "RAIOX_TORA":"RAIO-X",
-    "FORMA":"TIPO"
-})
+def carregar_e_preparar_dados():
+    df = pd.read_csv("dados_tuberculose.csv", sep=";", low_memory=False).head(30000)
 
-dados_tuberculose.index.name = "ID"
-dados_tuberculose = dados_tuberculose.dropna()
-dados_tuberculose = dados_tuberculose[~dados_tuberculose.apply(lambda row: row.astype(str).str.contains('ignorado', case=False).any(), axis=1)]
+    classes_usadas = ['Cura', 'Óbito por TB', 'Abandono', 'Óbito por outras causas', 'Transferência']
+    df = df[df['SITUA_ENCE'].isin(classes_usadas)]
 
-cols_baciloscopia = ['1º BACILOSCOPIA', '2º BACILOSCOPIA', '3º BACILOSCOPIA', '4º BACILOSCOPIA', '5º BACILOSCOPIA', '6º BACILOSCOPIA']
-dados_tuberculose['BACILOSCOPIA_NEGATIVA'] = dados_tuberculose[cols_baciloscopia].astype(str).apply(
-    lambda row: sum(row.str.contains('Negativa', case=False, na=False)), axis=1)
+    df = df.rename(columns={
+        "SITUA_ENCE": "STATUS_ENCERRAMENTO", "NU_IDADE_N": "IDADE", "CS_SEXO": "SEXO",
+        "CS_ZONA": "ZONA", "AGRAVAIDS": "AGRAV_HIV", "AGRAVALCOO": "AGRAV_ALCOOLISMO",
+        "AGRAVDIABE": "AGRAV_DIABETES", "AGRAVDROGA": "AGRAV_DROGAS", "AGRAVTABAC": "AGRAV_TABACO",
+        "DT_INIC_TR": "INICIO_DO_TRATAMENTO", "DT_ENCERRA": "DATA_ENCERRAMENTO",
+        "BACILOSC_1": "1_BACILOSCOPIA", "RAIOX_TORA": "RAIO-X", "FORMA": "TIPO"
+    })
 
-df_cura = dados_tuberculose[dados_tuberculose['STATUS ENCERRAMENTO'] == 'Cura']
-df_outros = dados_tuberculose[dados_tuberculose['STATUS ENCERRAMENTO'] != 'Cura']
-df_cura_reduzido = resample(df_cura, replace=False, n_samples=500, random_state=42)
-dados_balanceados = pd.concat([df_cura_reduzido, df_outros])
-dados_balanceados = dados_balanceados.sample(frac=1, random_state=42).reset_index(drop=True)
+    df['INICIO_DO_TRATAMENTO'] = pd.to_datetime(df['INICIO_DO_TRATAMENTO'], format='%d/%m/%Y', errors='coerce')
+    df['DATA_ENCERRAMENTO'] = pd.to_datetime(df['DATA_ENCERRAMENTO'], format='%d/%m/%Y', errors='coerce')
+    df['DURACAO_TRATAMENTO'] = (df['DATA_ENCERRAMENTO'] - df['INICIO_DO_TRATAMENTO']).dt.days
 
-colunas_entrada = [
-    'IDADE', 'SEXO', 'ZONA',
-    'AGRAV HIV', 'AGRAV DIABETES', 'AGRAV DROGAS',
-    'AGRAV ALCOOLISMO', 'AGRAV TABACO',
-    'TIPO', 'RAIO-X', '1º BACILOSCOPIA', 'BACILOSCOPIA_NEGATIVA'
-]
-X = dados_balanceados[colunas_entrada]
-y = dados_balanceados['STATUS ENCERRAMENTO']
+    colunas_essenciais = [
+        'IDADE', 'SEXO', 'ZONA', 'AGRAV_HIV', 'AGRAV_ALCOOLISMO', 'AGRAV_DIABETES',
+        'AGRAV_DROGAS', 'AGRAV_TABACO', 'TIPO', 'RAIO-X', '1_BACILOSCOPIA',
+        'DURACAO_TRATAMENTO', 'STATUS_ENCERRAMENTO'
+    ]
+    df = df.dropna(subset=colunas_essenciais)
+    df = df[df['DURACAO_TRATAMENTO'] >= 0]
 
-le_dict = {}
-for col in X.columns:
-    if X[col].dtype == 'object':
-        le = LabelEncoder()
-        X.loc[:, col] = le.fit_transform(X[col].astype(str))
-        le_dict[col] = le
+    for col in df.select_dtypes(include=['object']).columns:
+        if col != 'STATUS_ENCERRAMENTO':
+            df = df[~df[col].astype(str).str.contains('ignorado', case=False, na=False)]
 
-y_encoder = LabelEncoder()
-y = y_encoder.fit_transform(y.astype(str))
+    df['IDADE_FAIXA'] = pd.cut(df['IDADE'], bins=[0, 19, 39, 59, 79, 120],
+                               labels=['0-19', '20-39', '40-59', '60-79', '80+'])
+    df['TOTAL_AGRAVOS'] = df[['AGRAV_HIV', 'AGRAV_ALCOOLISMO', 'AGRAV_DIABETES',
+                              'AGRAV_DROGAS', 'AGRAV_TABACO']].apply(
+        lambda x: (x.astype(str).str.lower() == 'sim').sum(), axis=1)
+    df['RAIO-X_BINARIO'] = np.where(
+        df['RAIO-X'].astype(str).str.contains('normal', case=False, na=False), 'Normal', 'Anormal'
+    )
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    print(f"Linhas preservadas após limpeza: {len(df)}")
+    return df
 
-modelo = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
-modelo.fit(X_train, y_train)
-y_pred = modelo.predict(X_test)
 
-print("Colunas utilizadas:", list(X.columns))
-print("Acurácia:", accuracy_score(y_test, y_pred))
-print("\nRelatório de Classificação:\n", classification_report(y_test, y_pred, target_names=y_encoder.classes_))
+def treinar_modelo_binario(dados):
+    print("\n" + "=" * 50)
+    print("Treinando Modelo 1: Cura vs. Não Cura")
+    print("=" * 50)
 
-joblib.dump({
-    "modelo": modelo,
-    "encoders": le_dict,
-    "target_encoder": y_encoder,
-    "X_test": X_test,
-    "y_test": y_test,
-    "y_pred": y_pred
-}, "modelo/modelo_balanceado.pkl")
+    dados['TARGET_BINARIO'] = np.where(dados['STATUS_ENCERRAMENTO'] == 'Cura', 1, 0)
+    colunas_entrada = [
+        'IDADE', 'IDADE_FAIXA', 'SEXO', 'ZONA', 'AGRAV_HIV', 'AGRAV_ALCOOLISMO',
+        'AGRAV_DIABETES', 'AGRAV_DROGAS', 'AGRAV_TABACO', 'TIPO', 'RAIO-X_BINARIO',
+        '1_BACILOSCOPIA', 'DURACAO_TRATAMENTO', 'TOTAL_AGRAVOS'
+    ]
+    X = pd.get_dummies(dados[colunas_entrada], drop_first=True)
+    y = dados['TARGET_BINARIO']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+    ratio = (y == 0).sum() / (y == 1).sum()
+
+    modelo_final = xgb.XGBClassifier(
+        random_state=42, eval_metric='logloss', tree_method='hist',
+        colsample_bytree=1.0, gamma=0.2, learning_rate=0.01, max_depth=4,
+        min_child_weight=1, n_estimators=200, subsample=1.0, scale_pos_weight=ratio
+    )
+    modelo_final.fit(X_train, y_train)
+    y_pred = modelo_final.predict(X_test)
+
+    print("\n--- RESULTADOS FINAIS (Cura vs Não Cura) ---")
+    print(f"Acurácia: {accuracy_score(y_test, y_pred):.4f}")
+    print(f"MCC: {matthews_corrcoef(y_test, y_pred):.4f}")
+    print(classification_report(y_test, y_pred, target_names=['Não Cura', 'Cura']))
+    joblib.dump({
+        "modelo": modelo_final,
+        "colunas": X.columns.tolist(),
+        "X_test": X_test},
+        "modelo/modelo_balanceado.pkl")
+
+if __name__ == "__main__":
+    dados = carregar_e_preparar_dados()
+    treinar_modelo_binario(dados)
