@@ -231,9 +231,7 @@ elif colunas == "INDÍCE DE RISCO":
 elif colunas == "Previsão com Machine Learning (ML)":
     modelo_data = joblib.load("modelo/modelo_balanceado.pkl")
     modelo = modelo_data["modelo"]
-    le_dict = modelo_data["encoders"]
-    y_encoder = modelo_data["target_encoder"]
-    X_test = modelo_data["X_test"]
+    colunas_modelo = modelo_data["colunas"]
     y_test = modelo_data["y_test"]
     y_pred = modelo_data["y_pred"]
 
@@ -248,19 +246,7 @@ elif colunas == "Previsão com Machine Learning (ML)":
         acuracia = accuracy_score(y_test, y_pred)
         st.metric(label="Acurácia", value=f"{acuracia * 100:.2f}%")
 
-    conf_matrix = confusion_matrix(y_test, y_pred)
-    st.subheader("🔢 Matriz de Confusão")
-    fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", ax=ax,
-                cbar=False,
-                xticklabels=y_encoder.classes_,
-                yticklabels=y_encoder.classes_,
-                annot_kws={"size": 10})
-    ax.set_xlabel("Classe prevista", fontsize=9)
-    ax.set_ylabel("Classe verdadeira", fontsize=9)
-    st.pyplot(fig)
-
-    report = classification_report(y_test, y_pred, output_dict=True, target_names=y_encoder.classes_)
+    report = classification_report(y_test, y_pred, output_dict=True, target_names=["Não Cura", "Cura"])
     report_df = pd.DataFrame(report).transpose()
     report_df = report_df.drop(columns=["support"], errors="ignore")
 
@@ -275,38 +261,45 @@ elif colunas == "Previsão com Machine Learning (ML)":
     st.title("🎯 Previsão de Encerramento")
 
     idade = st.slider("Idade", 0, 120, 30)
-    sexo = st.selectbox("Sexo", le_dict['SEXO'].classes_)
-    zona = st.selectbox("Zona", le_dict['ZONA'].classes_)
-    hiv = st.selectbox("HIV", le_dict['AGRAV HIV'].classes_)
-    diabetes = st.selectbox("Diabetes", le_dict['AGRAV DIABETES'].classes_)
-    drogas = st.selectbox("Drogas", le_dict['AGRAV DROGAS'].classes_)
-    alcool = st.selectbox("Alcoolismo", le_dict['AGRAV ALCOOLISMO'].classes_)
-    tabaco = st.selectbox("Tabagismo", le_dict['AGRAV TABACO'].classes_)
-    baciloscopia_1 = st.selectbox("1º Baciloscopia", le_dict['1º BACILOSCOPIA'].classes_)
-    baciloscopia_negativa = st.slider("Nº de Baciloscopias Negativas", 0, 6, 0)
-    raiox = st.selectbox("Resultado do Raio-X", le_dict['RAIO-X'].classes_)
+    sexo = st.selectbox("Sexo", ["Masculino", "Feminino"])
+    zona = st.selectbox("Zona", ["Urbana", "Rural"])
+    hiv = st.selectbox("HIV", ["Sim", "Não"])
+    diabetes = st.selectbox("Diabetes", ["Sim", "Não"])
+    drogas = st.selectbox("Drogas", ["Sim", "Não"])
+    alcool = st.selectbox("Alcoolismo", ["Sim", "Não"])
+    tabaco = st.selectbox("Tabagismo", ["Sim", "Não"])
+    baciloscopia_1 = st.selectbox("1º Baciloscopia", ["Positiva", "Negativa"])
+    raiox = st.selectbox("Resultado do Raio-X", ["Normal", "Anormal"])
     tipo = st.selectbox("Tipo", ["Pulmonar", "Extrapulmonar", "Pulmonar + Extrapulmonar"])
+    duracao_tratamento = st.slider("Duração do Tratamento (dias)", 0, 1000, 180)
 
     input_dict = {
         'IDADE': idade,
-        'SEXO': le_dict['SEXO'].transform([sexo])[0],
-        'ZONA': le_dict['ZONA'].transform([zona])[0],
-        'AGRAV HIV': le_dict['AGRAV HIV'].transform([hiv])[0],
-        'AGRAV DIABETES': le_dict['AGRAV DIABETES'].transform([diabetes])[0],
-        'AGRAV DROGAS': le_dict['AGRAV DROGAS'].transform([drogas])[0],
-        'AGRAV ALCOOLISMO': le_dict['AGRAV ALCOOLISMO'].transform([alcool])[0],
-        'AGRAV TABACO': le_dict['AGRAV TABACO'].transform([tabaco])[0],
-        'TIPO': le_dict['TIPO'].transform([tipo])[0],
-        'RAIO-X': le_dict['RAIO-X'].transform([raiox])[0],
-        '1º BACILOSCOPIA': le_dict['1º BACILOSCOPIA'].transform([baciloscopia_1])[0],
-        'BACILOSCOPIA_NEGATIVA': baciloscopia_negativa,
+        'IDADE_FAIXA': pd.cut([idade], bins=[0, 19, 39, 59, 79, 120],
+                              labels=['0-19', '20-39', '40-59', '60-79', '80+'])[0],
+        'SEXO': sexo,
+        'ZONA': zona,
+        'AGRAV_HIV': hiv,
+        'AGRAV_ALCOOLISMO': alcool,
+        'AGRAV_DIABETES': diabetes,
+        'AGRAV_DROGAS': drogas,
+        'AGRAV_TABACO': tabaco,
+        'TIPO': tipo,
+        'RAIO-X_BINARIO': raiox,
+        '1_BACILOSCOPIA': baciloscopia_1,
+        'DURACAO_TRATAMENTO': duracao_tratamento,
+        'TOTAL_AGRAVOS': sum([x == "Sim" for x in [hiv, alcool, diabetes, drogas, tabaco]])
     }
 
     entrada = pd.DataFrame([input_dict])
 
-
+    entrada_dummies = pd.get_dummies(entrada, drop_first=True)
+    for col in colunas_modelo:
+        if col not in entrada_dummies.columns:
+            entrada_dummies[col] = 0
+    entrada_dummies = entrada_dummies[colunas_modelo]
 
     if st.button("Prever Status de Encerramento"):
-        predicao = modelo.predict(entrada)[0]
-        classe_predita = y_encoder.inverse_transform([predicao])[0]
-        st.success(f"🧾 Previsão: {classe_predita}")
+        predicao = modelo.predict(entrada_dummies)[0]
+        status_predito = "Cura" if predicao == 1 else "Não Cura"
+        st.success(f"🧾 Previsão: {status_predito}")
