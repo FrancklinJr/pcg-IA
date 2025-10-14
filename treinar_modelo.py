@@ -81,7 +81,9 @@ def treinar_modelo_binario(dados):
     joblib.dump({
         "modelo": modelo_final,
         "colunas": X.columns.tolist(),
-        "X_test": X_test},
+        "X_test": X_test,
+        "y_test": y_test,
+        "y_pred": y_pred},
         "modelo/modelo_balanceado.pkl")
 
 if __name__ == "__main__":
