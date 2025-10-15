@@ -36,8 +36,6 @@ def carregar_e_preparar_dados():
         if col != 'STATUS_ENCERRAMENTO':
             df = df[~df[col].astype(str).str.contains('ignorado', case=False, na=False)]
 
-    df['IDADE_FAIXA'] = pd.cut(df['IDADE'], bins=[0, 19, 39, 59, 79, 120],
-                               labels=['0-19', '20-39', '40-59', '60-79', '80+'])
     df['TOTAL_AGRAVOS'] = df[['AGRAV_HIV', 'AGRAV_ALCOOLISMO', 'AGRAV_DIABETES',
                               'AGRAV_DROGAS', 'AGRAV_TABACO']].apply(
         lambda x: (x.astype(str).str.lower() == 'sim').sum(), axis=1)
@@ -56,7 +54,7 @@ def treinar_modelo_binario(dados):
 
     dados['TARGET_BINARIO'] = np.where(dados['STATUS_ENCERRAMENTO'] == 'Cura', 1, 0)
     colunas_entrada = [
-        'IDADE', 'IDADE_FAIXA', 'SEXO', 'ZONA', 'AGRAV_HIV', 'AGRAV_ALCOOLISMO',
+        'IDADE', 'SEXO', 'ZONA', 'AGRAV_HIV', 'AGRAV_ALCOOLISMO',
         'AGRAV_DIABETES', 'AGRAV_DROGAS', 'AGRAV_TABACO', 'TIPO', 'RAIO-X_BINARIO',
         '1_BACILOSCOPIA', 'DURACAO_TRATAMENTO', 'TOTAL_AGRAVOS'
     ]
